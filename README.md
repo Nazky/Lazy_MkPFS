@@ -148,7 +148,7 @@ verify_pfs(
 - **pycompression** for the amazing compression libraries:
   - [python-isal](https://github.com/pycompression/python-isal) (Intel ISA-L)
   - [python-zlib-ng](https://github.com/pycompression/python-zlib-ng)
-- [Declan Kerr](x.com/kerrdec97) for the windows testing.
+- [**Declan Kerr**](https://x.com/kerrdec97) for the windows testing.
 
 ---
 
