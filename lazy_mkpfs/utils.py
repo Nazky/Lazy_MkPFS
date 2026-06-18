@@ -1,12 +1,19 @@
-"""Utilities shared between multiple modules."""
-
+# pfs/utils.py
 from __future__ import annotations
-
 import json
 import tempfile
 from pathlib import Path
 from typing import BinaryIO
-
+from .types import BuildError
+import json
+import tempfile
+from pathlib import Path
+from typing import BinaryIO
+import os
+import sys
+import tempfile
+from pathlib import Path
+from typing import BinaryIO
 
 def human_readable_size(size: int) -> str:
     """Convert a byte count to a human-readable string.
@@ -72,22 +79,73 @@ def normalize_output_path(path_arg: str, desired_suffix: str, adjust: bool = Tru
     normalized: Path = p.with_suffix(desired_suffix)
     return normalized, True
 
+def get_available_ram_bytes() -> int:
+    """Return available RAM in bytes, or 0 if undetectable."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            class MEMORYSTATUSEX(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong),
+                    ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+            mem = MEMORYSTATUSEX()
+            mem.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(mem))
+            return mem.ullAvailPhys
+        except Exception:
+            return 0
+    else:
+        try:
+            with open('/proc/meminfo', 'r') as f:
+                for line in f:
+                    if line.startswith('MemAvailable:'):
+                        return int(line.split()[1]) * 1024
+        except FileNotFoundError:
+            pass
+        try:
+            pages = os.sysconf('SC_AVPHYS_PAGES')
+            page_size = os.sysconf('SC_PAGE_SIZE')
+            if pages > 0 and page_size > 0:
+                return pages * page_size
+        except (AttributeError, ValueError):
+            pass
+    return 0
 
-def resolve_temp_root(temp_folder: Path | None = None) -> Path:
+
+def resolve_temp_root(temp_folder: Path | None = None, output_path: Path | None = None) -> Path:
     """Resolve the temporary root directory used for pack artifacts.
 
     Args:
         temp_folder: Optional caller-provided temp directory path.
+        output_path: Optional output file path, used to default the temp folder
+                     to a hidden directory next to the output file.
 
     Returns:
         Existing directory path used for temporary files.
     """
-    if temp_folder is None:
-        return Path(tempfile.gettempdir())
+    # 1. If a custom temp folder is provided, use it
+    if temp_folder is not None:
+        temp_root: Path = temp_folder.expanduser().resolve()
+        temp_root.mkdir(parents=True, exist_ok=True)
+        return temp_root
+    
+    # 2. If no temp folder is provided, but we know the output path, 
+    #    create a hidden .mkpfs_temp folder right next to the output file
+    if output_path is not None:
+        temp_root = output_path.parent / ".mkpfs_temp"
+        temp_root.mkdir(parents=True, exist_ok=True)
+        return temp_root
 
-    temp_root: Path = temp_folder.expanduser().resolve()
-    temp_root.mkdir(parents=True, exist_ok=True)
-    return temp_root
+    # 3. Fallback to the system's default temporary directory
+    return Path(tempfile.gettempdir())
 
 
 def read_param_json(path: Path) -> dict[str, object]:
